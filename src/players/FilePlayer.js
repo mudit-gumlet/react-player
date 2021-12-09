@@ -152,6 +152,16 @@ export default class FilePlayer extends Component {
     return FLV_EXTENSIONS.test(url) || this.props.config.forceFLV
   }
 
+  loadGumletScript() {
+    return new Promise(function (resolve, reject){
+      const script = document.createElement("script");
+      script.src = "https://cdn.gumlytics.com/insights/1.0/gumlet-insights.min.js";
+      script.sync = true;
+      script.onload = () => resolve();
+      document.body.appendChild(script);
+    });
+  }
+
   load (url) {
     const { hlsVersion, hlsOptions, dashVersion, flvVersion } = this.props.config
     if (this.hls) {
@@ -162,22 +172,26 @@ export default class FilePlayer extends Component {
     }
     if (this.shouldUseHLS(url)) {
       getSDK(HLS_SDK_URL.replace('VERSION', hlsVersion), HLS_GLOBAL).then(Hls => {
-        this.hls = new Hls(hlsOptions)
-        this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          this.props.onReady()
-        })
-        this.hls.on(Hls.Events.ERROR, (e, data) => {
-          this.props.onError(e, data, this.hls, Hls)
-        })
-        if (MATCH_CLOUDFLARE_STREAM.test(url)) {
-          const id = url.match(MATCH_CLOUDFLARE_STREAM)[1]
-          this.hls.loadSource(REPLACE_CLOUDFLARE_STREAM.replace('{id}', id))
-        } else {
-          this.hls.loadSource(url)
-        }
-        this.hls.attachMedia(this.player)
-        this.props.onLoaded()
-      })
+        this.loadGumletScript().then(() => {
+          this.hls = new Hls(hlsOptions)
+          this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            this.props.onReady()
+          })
+          this.hls.on(Hls.Events.ERROR, (e, data) => {
+            this.props.onError(e, data, this.hls, Hls)
+          })
+          var gumletInsights = window.gumlet.insights(this.props.gumletconfig);
+          gumletInsights.register(this.hls);
+          if (MATCH_CLOUDFLARE_STREAM.test(url)) {
+            const id = url.match(MATCH_CLOUDFLARE_STREAM)[1]
+            this.hls.loadSource(REPLACE_CLOUDFLARE_STREAM.replace('{id}', id))
+          } else {
+            this.hls.loadSource(url)
+          }
+          this.hls.attachMedia(this.player)
+          this.props.onLoaded()
+        });
+      });
     }
     if (this.shouldUseDASH(url)) {
       getSDK(DASH_SDK_URL.replace('VERSION', dashVersion), DASH_GLOBAL).then(dashjs => {
